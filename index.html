@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Le Jeu de l'Oie de l'Espace</title>
+<style>
+  :root {
+    --bg: #0b1026; --panel: #151c3d; --case: #1f2a5a; --text: #e8ecff;
+    --accent: #ffcc33; --danger: #ff5c7a; --good: #4fe3a1; --special: #7a5cff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: "Segoe UI", Helvetica, Arial, sans-serif; color: var(--text);
+    background: radial-gradient(ellipse at top, #1b2460 0%, var(--bg) 60%);
+    min-height: 100vh;
+  }
+  h1 { text-align: center; margin: 16px 0 4px; color: var(--accent); letter-spacing: 1px; }
+  .sous-titre { text-align: center; margin: 0 0 16px; opacity: .7; }
+  .ecran { max-width: 1250px; margin: 0 auto; padding: 0 16px 24px; }
+  .cache { display: none !important; }
+
+  /* Écran de configuration */
+  #config { max-width: 520px; background: var(--panel); padding: 24px; border-radius: 14px; }
+  #config label { display: block; margin: 10px 0 4px; }
+  #config input { width: 100%; padding: 8px; border-radius: 8px; border: 1px solid #3a4580; background: #0f1530; color: var(--text); font-size: 16px; }
+  #noms { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+  .erreur { color: var(--danger); min-height: 1.2em; margin: 8px 0; }
+  button {
+    background: var(--accent); color: #1a1a1a; border: none; padding: 10px 16px; border-radius: 10px;
+    font-size: 16px; font-weight: bold; cursor: pointer; margin: 4px 4px 4px 0;
+  }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button.secondaire { background: #3a4580; color: var(--text); }
+
+  /* Écran de jeu */
+  #jeu { display: grid; grid-template-columns: 1fr 340px; gap: 16px; }
+  @media (max-width: 950px) { #jeu { grid-template-columns: 1fr; } }
+  #plateau { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; }
+  .case {
+    position: relative; background: var(--case); border-radius: 8px; aspect-ratio: 1 / 1;
+    padding: 3px; font-size: 11px; overflow: hidden; border: 2px solid transparent;
+  }
+  .case .num { font-weight: bold; font-size: 12px; opacity: .8; }
+  .case .icone { position: absolute; top: 2px; right: 4px; font-size: 18px; }
+  .case .nom { position: absolute; bottom: 2px; left: 4px; right: 4px; font-size: 9px; opacity: .85; }
+  .case.oie { background: #23506b; }
+  .case.piege { background: #5a1f3a; }
+  .case.bonus { background: #1f5a45; }
+  .case.special { background: #3d2a7a; }
+  .case.depart { background: #444; }
+  .case.arrivee { background: #8a6d12; }
+  .case.surbrillance { border-color: var(--accent); }
+  .pions { position: absolute; top: 20px; left: 3px; right: 3px; display: flex; flex-wrap: wrap; gap: 2px; }
+  .pion {
+    width: 15px; height: 15px; border-radius: 50%; border: 2px solid white; font-size: 8px;
+    display: flex; align-items: center; justify-content: center; color: black; font-weight: bold;
+  }
+  .pion.actif { box-shadow: 0 0 6px 3px var(--accent); }
+
+  .panneau { background: var(--panel); border-radius: 14px; padding: 14px; margin-bottom: 12px; }
+  .panneau h3 { margin: 0 0 8px; color: var(--accent); font-size: 16px; }
+  #des { font-size: 42px; text-align: center; min-height: 52px; }
+  #tour-de { font-size: 18px; font-weight: bold; }
+  .carte {
+    display: inline-block; background: #2b3670; border: 1px solid #5a68b8; border-radius: 8px;
+    padding: 6px 8px; margin: 3px 3px 3px 0; cursor: pointer; font-size: 13px;
+  }
+  .carte:hover { background: #3a4790; }
+  .carte.inactive { opacity: .4; cursor: not-allowed; }
+  #cibles button { font-size: 13px; padding: 6px 10px; }
+  #journal { max-height: 220px; overflow-y: auto; font-size: 13px; line-height: 1.4; }
+  #journal div { border-bottom: 1px solid #2a3366; padding: 3px 0; }
+  .joueur-ligne { display: flex; align-items: center; gap: 6px; font-size: 13px; padding: 2px 0; }
+  .etat { opacity: .7; font-size: 11px; }
+  #victoire { text-align: center; }
+  #victoire h2 { font-size: 34px; color: var(--accent); }
+</style>
+</head>
+<body>
+<h1>🚀 Le Jeu de l'Oie de l'Espace</h1>
+<p class="sous-titre">Atteins la case 63 (la planète d'arrivée) en premier !</p>
+
+<!-- ===== Écran 1 : configuration ===== -->
+<div class="ecran" id="ecran-config">
+  <div id="config" style="margin: 0 auto;">
+    <label for="nb-equipes">Nombre d'équipes (entre 2 et 10) :</label>
+    <input type="number" id="nb-equipes" min="2" max="10" value="2">
+    <div id="noms"></div>
+    <div class="erreur" id="erreur-config"></div>
+    <button id="btn-lancer">Lancer la partie</button>
+  </div>
+</div>
+
+<!-- ===== Écran 2 : jeu ===== -->
+<div class="ecran cache" id="ecran-jeu">
+  <div id="jeu">
+    <div id="plateau"></div>
+    <div>
+      <div class="panneau">
+        <div id="tour-de"></div>
+        <div id="des">🎲🎲</div>
+        <button id="btn-des">Lancer les dés</button>
+        <button id="btn-recommencer" class="secondaire">Nouvelle partie</button>
+      </div>
+      <div class="panneau">
+        <h3>Tes cartes action</h3>
+        <div id="mes-cartes"></div>
+        <div id="cibles"></div>
+        <div class="etat">Une carte s'utilise pendant ton tour, avant de lancer les dés (3 cartes maximum).</div>
+      </div>
+      <div class="panneau">
+        <h3>Équipes</h3>
+        <div id="liste-joueurs"></div>
+      </div>
+      <div class="panneau">
+        <h3>Journal</h3>
+        <div id="journal"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Écran 3 : victoire ===== -->
+<div class="ecran cache" id="ecran-victoire">
+  <div class="panneau" id="victoire">
+    <h2 id="texte-victoire"></h2>
+    <p id="stats-victoire"></p>
+    <button id="btn-rejouer">Rejouer avec les mêmes équipes</button>
+    <button id="btn-nouvelle" class="secondaire">Changer les équipes</button>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* =========================================================
+   1. CONSTANTES DU JEU
+   ========================================================= */
+const CASE_FIN = 63;
+const MAX_CARTES = 3;
+const COULEURS = ["#ff5c7a", "#4fc3ff", "#4fe3a1", "#ffcc33", "#c77dff",
+                  "#ff9f43", "#ffffff", "#ff6bd6", "#a3e635", "#94a3b8"];
+
+// Cases oies (fusées) : on avance encore du même nombre de cases.
+const CASES_OIE = [5, 9, 14, 18, 23, 27, 32, 36, 41, 45, 50, 54, 59];
+
+// Cases spéciales : type = "piege", "bonus" ou "special".
+const CASES_SPECIALES = {
+  6:  { icone: "🌉", nom: "Pont spatial", type: "bonus",   texte: "Pont spatial : file directement à la case 12." },
+  15: { icone: "🃏", nom: "Pioche",       type: "bonus",   texte: "Station de ravitaillement : pioche une carte action." },
+  19: { icone: "🏨", nom: "Hôtel",        type: "piege",   texte: "Hôtel orbital : passe 2 tours." },
+  25: { icone: "🌪️", nom: "Tempête",      type: "special", texte: "Tempête solaire : recule d'autant de cases qu'il y a d'équipes." },
+  31: { icone: "🕳️", nom: "Trou noir",    type: "piege",   texte: "Trou noir (le puits) : bloqué jusqu'à ce qu'une autre équipe vienne te libérer." },
+  35: { icone: "🃏", nom: "Pioche",       type: "bonus",   texte: "Station de ravitaillement : pioche une carte action." },
+  42: { icone: "🌀", nom: "Labyrinthe",   type: "piege",   texte: "Champ d'astéroïdes (le labyrinthe) : retourne à la case 30." },
+  47: { icone: "🌪️", nom: "Tempête",      type: "special", texte: "Tempête solaire : recule d'autant de cases qu'il y a d'équipes." },
+  52: { icone: "🔒", nom: "Prison",       type: "piege",   texte: "Prison martienne : bloqué jusqu'à ce qu'une autre équipe vienne te libérer." },
+  56: { icone: "🃏", nom: "Pioche",       type: "bonus",   texte: "Station de ravitaillement : pioche une carte action." },
+  58: { icone: "💀", nom: "Explosion",    type: "piege",   texte: "Explosion du réacteur (tête de mort) : retour à la case 0 !" }
+};
+
+// Cartes action (comme au Mille Bornes, on les garde et on les joue quand on veut).
+const CARTES = {
+  turbo:      { icone: "⚡", nom: "Turbo",       desc: "+3 cases à ton prochain lancer",              cible: false },
+  rejouer:    { icone: "🔁", nom: "Rejouer",     desc: "Tu rejoues une fois après ce tour",         cible: false },
+  bouclier:   { icone: "🛡️", nom: "Bouclier",    desc: "Te protège du prochain piège",               cible: false },
+  liberation: { icone: "🔓", nom: "Libération",  desc: "Sors de l'hôtel, du trou noir ou de la prison", cible: false },
+  bloquer:    { icone: "🧊", nom: "Gel",          desc: "Une équipe adverse passe son prochain tour",   cible: true },
+  echange:    { icone: "🔄", nom: "Téléporteur", desc: "Échange ta place avec une autre équipe",      cible: true }
+};
+const TYPES_CARTES = Object.keys(CARTES);
+
+/* =========================================================
+   2. ÉTAT DE LA PARTIE
+   ========================================================= */
+let joueurs = [];          // liste des équipes
+let courant = 0;           // indice de l'équipe dont c'est le tour
+let enCours = false;       // vrai pendant une animation (empêche les doubles clics)
+let carteEnAttente = null; // carte qui attend le choix d'une cible
+let nbTours = 0;
+let derniersNoms = [];
+
+/* =========================================================
+   3. OUTILS
+   ========================================================= */
+const $ = (id) => document.getElementById(id);
+const de = () => 1 + Math.floor(Math.random() * 6);
+const FACES = ["", "⚀", "⚁", "⚂", "⚃", "⚄", "⚅"];
+const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function carteAleatoire() {
+  return TYPES_CARTES[Math.floor(Math.random() * TYPES_CARTES.length)];
+}
+
+function log(message) {
+  const ligne = document.createElement("div");
+  ligne.textContent = message;
+  $("journal").prepend(ligne);
+}
+
+// Échappe le texte saisi par l'utilisateur (évite d'injecter du HTML via un nom d'équipe).
+function echapper(texte) {
+  const d = document.createElement("div");
+  d.textContent = texte;
+  return d.innerHTML;
+}
+
+// Si on dépasse 63, on recule du surplus (règle classique).
+function rebond(position) {
+  if (position > CASE_FIN) return CASE_FIN - (position - CASE_FIN);
+  if (position < 0) return 0;
+  return position;
+}
+
+/* =========================================================
+   4. ÉCRAN DE CONFIGURATION
+   ========================================================= */
+function afficherChampsNoms() {
+  const n = parseInt($("nb-equipes").value, 10);
+  const zone = $("noms");
+  const anciens = [...zone.querySelectorAll("input")].map((i) => i.value);
+  zone.innerHTML = "";
+  if (isNaN(n) || n < 2 || n > 10) return;
+  for (let i = 0; i < n; i++) {
+    const input = document.createElement("input");
+    input.placeholder = "Équipe " + (i + 1);
+    input.maxLength = 15;
+    input.value = anciens[i] || derniersNoms[i] || "";
+    input.style.borderLeft = "6px solid " + COULEURS[i];
+    zone.appendChild(input);
+  }
+}
+
+function validerConfig() {
+  const brut = $("nb-equipes").value.trim();
+  const n = Number(brut);
+  if (brut === "" || !Number.isInteger(n) || n < 2 || n > 10) {
+    $("erreur-config").textContent = "Le nombre d'équipes doit être un nombre entier entre 2 et 10.";
+    return null;
+  }
+  const noms = [...$("noms").querySelectorAll("input")].map((input, i) =>
+    input.value.trim() || "Équipe " + (i + 1));
+  if (new Set(noms.map((x) => x.toLowerCase())).size !== noms.length) {
+    $("erreur-config").textContent = "Deux équipes ne peuvent pas avoir le même nom.";
+    return null;
+  }
+  $("erreur-config").textContent = "";
+  return noms;
+}
+
+function demarrerPartie(noms) {
+  derniersNoms = noms;
+  joueurs = noms.map((nom, i) => ({
+    nom, couleur: COULEURS[i], position: 0,
+    toursABloquer: 0,      // hôtel ou carte Gel
+    coince: false,         // trou noir ou prison
+    bouclier: false, turbo: 0, rejouer: false,
+    cartes: [carteAleatoire(), carteAleatoire()],
+    premierLancer: true
+  }));
+  courant = 0; nbTours = 0; enCours = false; carteEnAttente = null;
+  $("journal").innerHTML = "";
+  $("des").textContent = "🎲🎲";
+  $("ecran-config").classList.add("cache");
+  $("ecran-victoire").classList.add("cache");
+  $("ecran-jeu").classList.remove("cache");
+  dessinerPlateau();
+  log("La partie commence avec " + joueurs.length + " équipes. Chaque équipe reçoit 2 cartes action.");
+  preparerTour();
+}
+
+/* =========================================================
+   5. AFFICHAGE
+   ========================================================= */
+// Le plateau est un serpentin de 7 lignes x 9 colonnes (cases 1 à 63) + la case départ 0 affichée à part.
+function ordreSerpentin() {
+  const lignes = [];
+  for (let l = 0; l < 7; l++) {
+    const ligne = [];
+    for (let c = 0; c < 9; c++) ligne.push(l * 9 + c + 1);
+    if (l % 2 === 1) ligne.reverse();
+    lignes.push(ligne);
+  }
+  return lignes.reverse().flat(); // la case 63 en haut, le départ en bas
+}
+
+function dessinerPlateau() {
+  const plateau = $("plateau");
+  plateau.innerHTML = "";
+  const cases = ordreSerpentin();
+  // Case départ (0) ajoutée en dernière ligne, à gauche.
+  cases.push(0);
+  for (const numero of cases) {
+    const div = document.createElement("div");
+    div.className = "case";
+    div.id = "case-" + numero;
+    let icone = "", nom = "";
+    if (numero === 0) { div.classList.add("depart"); icone = "🛰️"; nom = "Départ"; }
+    else if (numero === CASE_FIN) { div.classList.add("arrivee"); icone = "🪐"; nom = "Arrivée"; }
+    else if (CASES_SPECIALES[numero]) {
+      const s = CASES_SPECIALES[numero];
+      div.classList.add(s.type); icone = s.icone; nom = s.nom;
+      div.title = s.texte;
+    } else if (CASES_OIE.includes(numero)) {
+      div.classList.add("oie"); icone = "🚀"; nom = "Fusée";
+      div.title = "Fusée (case oie) : avance encore du même nombre de cases.";
+    }
+    div.innerHTML = `<span class="num">${numero}</span><span class="icone">${icone}</span>
+                     <div class="pions"></div><span class="nom">${nom}</span>`;
+    plateau.appendChild(div);
+  }
+  dessinerPions();
+}
+
+function dessinerPions() {
+  document.querySelectorAll(".pions").forEach((p) => (p.innerHTML = ""));
+  document.querySelectorAll(".case").forEach((c) => c.classList.remove("surbrillance"));
+  joueurs.forEach((j, i) => {
+    const zone = document.querySelector("#case-" + j.position + " .pions");
+    const pion = document.createElement("div");
+    pion.className = "pion" + (i === courant ? " actif" : "");
+    pion.style.background = j.couleur;
+    pion.textContent = i + 1;
+    pion.title = j.nom;
+    zone.appendChild(pion);
+  });
+  $("case-" + joueurs[courant].position).classList.add("surbrillance");
+}
+
+function etatJoueur(j) {
+  const etats = [];
+  if (j.coince) etats.push("coincé");
+  if (j.toursABloquer > 0) etats.push("passe " + j.toursABloquer + " tour(s)");
+  if (j.bouclier) etats.push("🛡️");
+  if (j.turbo) etats.push("⚡+" + j.turbo);
+  return etats.join(", ");
+}
+
+function rafraichir() {
+  const j = joueurs[courant];
+  $("tour-de").innerHTML = `Au tour de <span style="color:${j.couleur}">${echapper(j.nom)}</span>`;
+  // Liste des équipes
+  $("liste-joueurs").innerHTML = joueurs.map((x, i) =>
+    `<div class="joueur-ligne"><span class="pion" style="background:${x.couleur}">${i + 1}</span>
+     ${echapper(x.nom)} — case ${x.position} — ${x.cartes.length} carte(s)
+     <span class="etat">${etatJoueur(x)}</span></div>`).join("");
+  // Cartes du joueur courant
+  const zone = $("mes-cartes");
+  zone.innerHTML = "";
+  if (j.cartes.length === 0) zone.textContent = "Aucune carte.";
+  j.cartes.forEach((type, index) => {
+    const c = CARTES[type];
+    const el = document.createElement("span");
+    const utilisable = carteUtilisable(j, type);
+    el.className = "carte" + (utilisable ? "" : " inactive");
+    el.textContent = c.icone + " " + c.nom;
+    el.title = c.desc;
+    if (utilisable) el.onclick = () => jouerCarte(index);
+    zone.appendChild(el);
+  });
+  $("btn-des").disabled = enCours || carteEnAttente !== null;
+  dessinerPions();
+}
+
+/* =========================================================
+   6. CARTES ACTION
+   ========================================================= */
+function carteUtilisable(j, type) {
+  if (enCours || carteEnAttente !== null) return false;
+  if (type === "liberation") return j.coince || j.toursABloquer > 0;
+  if (j.coince || j.toursABloquer > 0) return false; // bloqué : seule la libération sert
+  if (type === "bouclier") return !j.bouclier;
+  return true;
+}
+
+function jouerCarte(index) {
+  const j = joueurs[courant];
+  const type = j.cartes[index];
+  if (!carteUtilisable(j, type)) return;
+  const c = CARTES[type];
+
+  if (c.cible) {
+    carteEnAttente = index;
+    const zone = $("cibles");
+    zone.innerHTML = "<div>Choisis une cible :</div>";
+    joueurs.forEach((cible, i) => {
+      if (i === courant) return;
+      const b = document.createElement("button");
+      b.textContent = cible.nom;
+      b.style.background = cible.couleur;
+      b.onclick = () => appliquerCarteCiblee(i);
+      zone.appendChild(b);
+    });
+    const annuler = document.createElement("button");
+    annuler.textContent = "Annuler";
+    annuler.className = "secondaire";
+    annuler.onclick = () => { carteEnAttente = null; zone.innerHTML = ""; rafraichir(); };
+    zone.appendChild(annuler);
+    rafraichir();
+    return;
+  }
+
+  j.cartes.splice(index, 1);
+  if (type === "turbo") { j.turbo += 3; log(`${j.nom} active Turbo : +3 au prochain lancer.`); }
+  if (type === "rejouer") { j.rejouer = true; log(`${j.nom} pourra rejouer après ce tour.`); }
+  if (type === "bouclier") { j.bouclier = true; log(`${j.nom} active son bouclier.`); }
+  if (type === "liberation") {
+    j.coince = false; j.toursABloquer = 0;
+    log(`${j.nom} utilise Libération et peut rejouer normalement.`);
+  }
+  rafraichir();
+}
+
+function appliquerCarteCiblee(iCible) {
+  const j = joueurs[courant];
+  const type = j.cartes[carteEnAttente];
+  const cible = joueurs[iCible];
+  j.cartes.splice(carteEnAttente, 1);
+  carteEnAttente = null;
+  $("cibles").innerHTML = "";
+
+  if (cible.bouclier) {
+    cible.bouclier = false;
+    log(`${cible.nom} était protégée par son bouclier : la carte ${CARTES[type].nom} de ${j.nom} est annulée.`);
+  } else if (type === "bloquer") {
+    cible.toursABloquer += 1;
+    log(`${j.nom} gèle ${cible.nom} : elle passe son prochain tour.`);
+  } else if (type === "echange") {
+    const tmp = j.position; j.position = cible.position; cible.position = tmp;
+    // L'état "coincé" reste attaché à la case : celui qui arrive sur un trou noir/prison est coincé.
+    const jCoince = j.coince; j.coince = cible.coince; cible.coince = jCoince;
+    log(`${j.nom} échange sa place avec ${cible.nom} (cases ${j.position} et ${cible.position}).`);
+  }
+  rafraichir();
+}
+
+/* =========================================================
+   7. DÉROULEMENT D'UN TOUR
+   ========================================================= */
+function preparerTour() {
+  const j = joueurs[courant];
+  // Cas bloquant : toutes les équipes sont coincées (trou noir / prison) -> on les libère toutes.
+  if (joueurs.every((x) => x.coince)) {
+    joueurs.forEach((x) => (x.coince = false));
+    log("Toutes les équipes étaient coincées : une onde de choc les libère toutes !");
+  }
+  rafraichir();
+  if (j.toursABloquer > 0 && !j.cartes.includes("liberation")) {
+    // Pas de carte pour se libérer : on passe automatiquement.
+    log(`${j.nom} passe son tour (encore ${j.toursABloquer - 1} après celui-ci).`);
+    j.toursABloquer -= 1;
+    enCours = true; // empêche de lancer les dés pendant le passage automatique
+    rafraichir();
+    setTimeout(() => { enCours = false; tourSuivant(); }, 700);
+  }
+}
+
+async function lancerDes() {
+  if (enCours || carteEnAttente !== null) return;
+  const j = joueurs[courant];
+
+  if (j.toursABloquer > 0) {   // il avait une carte Libération mais ne l'a pas jouée
+    log(`${j.nom} passe son tour.`);
+    j.toursABloquer -= 1;
+    tourSuivant();
+    return;
+  }
+
+  enCours = true;
+  rafraichir();
+  // Petite animation des dés
+  for (let k = 0; k < 6; k++) {
+    $("des").textContent = FACES[de()] + FACES[de()];
+    await pause(70);
+  }
+  const d1 = de(), d2 = de();
+  $("des").textContent = FACES[d1] + FACES[d2];
+  let total = d1 + d2;
+  log(`${j.nom} lance les dés : ${d1} + ${d2} = ${total}.`);
+
+  if (j.coince) {
+    log(`${j.nom} est coincée : il faut qu'une autre équipe arrive sur sa case (ou une carte Libération).`);
+    j.premierLancer = false;
+    finDeTour();
+    return;
+  }
+
+  // Règle classique du premier lancer
+  if (j.premierLancer && j.position === 0 && ((d1 === 6 && d2 === 3) || (d1 === 3 && d2 === 6))) {
+    j.premierLancer = false;
+    await deplacerVers(j, 26, "Premier lancer 6+3 : direct à la case 26 !");
+    await appliquerCase(j, total);
+    finDeTour();
+    return;
+  }
+  if (j.premierLancer && j.position === 0 && ((d1 === 4 && d2 === 5) || (d1 === 5 && d2 === 4))) {
+    j.premierLancer = false;
+    await deplacerVers(j, 53, "Premier lancer 4+5 : direct à la case 53 !");
+    await appliquerCase(j, total);
+    finDeTour();
+    return;
+  }
+  j.premierLancer = false;
+
+  if (j.turbo) { total += j.turbo; log(`Turbo : ${j.nom} avance de ${total} cases.`); j.turbo = 0; }
+
+  await avancer(j, total);
+  await appliquerCase(j, total);
+  finDeTour();
+}
+
+// Avance case par case (animation), avec rebond si on dépasse 63.
+async function avancer(j, nb) {
+  const sens = nb >= 0 ? 1 : -1;
+  let reste = Math.abs(nb);
+  let direction = sens;
+  while (reste > 0) {
+    if (j.position === CASE_FIN && direction === 1) direction = -1; // rebond
+    if (j.position === 0 && direction === -1) break;
+    j.position += direction;
+    reste--;
+    dessinerPions();
+    await pause(110);
+  }
+}
+
+async function deplacerVers(j, caseCible, message) {
+  log(message);
+  await pause(250);
+  j.position = caseCible;
+  dessinerPions();
+  await pause(250);
+}
+
+function piegeEvite(j, nomPiege) {
+  if (j.bouclier) {
+    j.bouclier = false;
+    log(`🛡️ Le bouclier de ${j.nom} la protège : ${nomPiege} sans effet.`);
+    return true;
+  }
+  return false;
+}
+
+// Applique l'effet de la case où se trouve le joueur. Boucle si une case en amène une autre.
+async function appliquerCase(j, valeurDes) {
+  for (let securite = 0; securite < 20; securite++) {
+    const p = j.position;
+    if (p === CASE_FIN) return;
+
+    if (CASES_OIE.includes(p)) {
+      log(`🚀 Fusée en case ${p} : ${j.nom} avance encore de ${valeurDes}.`);
+      await avancer(j, valeurDes);
+      continue;
+    }
+    const s = CASES_SPECIALES[p];
+    if (!s) return;
+
+    switch (p) {
+      case 6:
+        await deplacerVers(j, 12, s.texte);
+        return;
+      case 15: case 35: case 56:
+        if (j.cartes.length < MAX_CARTES) {
+          const c = carteAleatoire();
+          j.cartes.push(c);
+          log(`🃏 ${j.nom} pioche la carte ${CARTES[c].icone} ${CARTES[c].nom}.`);
+        } else {
+          log(`🃏 ${j.nom} a déjà ${MAX_CARTES} cartes : pas de pioche.`);
+        }
+        return;
+      case 19:
+        if (piegeEvite(j, "l'hôtel")) return;
+        log(s.texte); j.toursABloquer += 2;
+        return;
+      case 25: case 47: {
+        // >>> Notre nouvelle action : recule d'autant de cases qu'il y a d'équipes <<<
+        if (piegeEvite(j, "la tempête")) return;
+        log(`🌪️ ${s.texte} ${j.nom} recule de ${joueurs.length} cases.`);
+        await avancer(j, -joueurs.length);
+        continue; // la case d'arrivée peut elle-même être spéciale
+      }
+      case 31: case 52:
+        if (piegeEvite(j, s.nom.toLowerCase())) return;
+        // Celui qui était déjà coincé ici est libéré.
+        joueurs.forEach((autre) => {
+          if (autre !== j && autre.position === p && autre.coince) {
+            autre.coince = false;
+            log(`${autre.nom} est libérée par l'arrivée de ${j.nom} !`);
+          }
+        });
+        log(s.texte); j.coince = true;
+        return;
+      case 42:
+        if (piegeEvite(j, "le labyrinthe")) return;
+        await deplacerVers(j, 30, s.texte);
+        return;
+      case 58:
+        if (piegeEvite(j, "l'explosion")) return;
+        await deplacerVers(j, 0, s.texte);
+        return;
+      default:
+        return;
+    }
+  }
+}
+
+function finDeTour() {
+  const j = joueurs[courant];
+  enCours = false;
+  nbTours++;
+  if (j.position === CASE_FIN) { victoire(j); return; }
+  if (j.rejouer && !j.coince && j.toursABloquer === 0) {
+    j.rejouer = false;
+    log(`🔁 ${j.nom} rejoue !`);
+    preparerTour();
+    return;
+  }
+  j.rejouer = false;
+  tourSuivant();
+}
+
+function tourSuivant() {
+  courant = (courant + 1) % joueurs.length;
+  preparerTour();
+}
+
+function victoire(j) {
+  $("ecran-jeu").classList.add("cache");
+  $("ecran-victoire").classList.remove("cache");
+  $("texte-victoire").textContent = `🏆 ${j.nom} a gagné !`;
+  $("stats-victoire").textContent = `Partie terminée en ${nbTours} lancers au total.`;
+}
+
+/* =========================================================
+   8. BRANCHEMENT DES BOUTONS
+   ========================================================= */
+$("nb-equipes").addEventListener("input", afficherChampsNoms);
+$("btn-lancer").addEventListener("click", () => {
+  const noms = validerConfig();
+  if (noms) demarrerPartie(noms);
+});
+$("btn-des").addEventListener("click", lancerDes);
+// Double clic de confirmation (pas de confirm() : bloqué dans certains navigateurs/iframes).
+let confirmationRecommencer = false;
+$("btn-recommencer").addEventListener("click", () => {
+  const b = $("btn-recommencer");
+  if (!confirmationRecommencer) {
+    confirmationRecommencer = true;
+    b.textContent = "Sûr ? Clique encore";
+    setTimeout(() => { confirmationRecommencer = false; b.textContent = "Nouvelle partie"; }, 3000);
+    return;
+  }
+  confirmationRecommencer = false;
+  b.textContent = "Nouvelle partie";
+  retourConfig();
+});
+$("btn-rejouer").addEventListener("click", () => demarrerPartie(derniersNoms));
+$("btn-nouvelle").addEventListener("click", retourConfig);
+document.addEventListener("keydown", (e) => {
+  if (e.code === "Space" && !$("ecran-jeu").classList.contains("cache")) { e.preventDefault(); lancerDes(); }
+});
+
+function retourConfig() {
+  $("ecran-jeu").classList.add("cache");
+  $("ecran-victoire").classList.add("cache");
+  $("ecran-config").classList.remove("cache");
+  afficherChampsNoms();
+}
+
+afficherChampsNoms();
+</script>
+</body>
+</html>
